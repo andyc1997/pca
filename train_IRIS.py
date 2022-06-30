@@ -5,7 +5,7 @@ import torch
 from model import PCAobj
 
 
-#region read wine data
+#region read iris data
 X_tr = pd.read_csv(r'.\iris.csv', sep=',')
 X_tr = X_tr.drop([X_tr.columns[0], X_tr.columns[5]], axis=1)
 print(f'Shape of training data: {X_tr.shape} \n'
@@ -30,6 +30,11 @@ model = PCAobj(dim=4)
 model.fit(K)
 print(f'Stdev: \n{torch.sqrt(model.s)}\n')
 print(f'Eigenvectors: \n{model.V}\n')
+
+model = PCAobj(dim=4, k=2)
+model.fit(K)
+print(f'Stdev: \n{torch.sqrt(model.s_topk)}\n')
+print(f'Eigenvectors: \n{model.V_topk}\n')
 #endregion
 
 

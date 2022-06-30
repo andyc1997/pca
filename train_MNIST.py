@@ -49,6 +49,6 @@ for i, x in enumerate(dataloader_tr, start=0):
           f'V matrix: {model.V.shape}')
 
 
-
 #endregion
 
+from model import sPCAENobj

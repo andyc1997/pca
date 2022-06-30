@@ -4,12 +4,9 @@ import numpy
 from torch import linalg
 
 
-#region classical principal component analysis (PCA)
+#region [PCA] classical principal component analysis
 class PCAobj:
-    dim: int
-    k: int
-
-    def __init__(self, dim=None, k=None):
+    def __init__(self, dim:int, k:int=None):
         if k is None:
             k = dim
 
@@ -20,12 +17,25 @@ class PCAobj:
 
         # PCA output
         self.s = None # singular values
-        self.U = None # left singular matrix
         self.V = None # right singular matrix
 
-    def fit(self, K):
+        # select largest k eigenpairs
+        self.s_topk = None
+        self.V_topk = None
+
+    def fit(self, K:torch.Tensor):
         _, s, Vh = linalg.svd(K)
         self.s = s # eigenvalues
         self.V = torch.t(Vh)  # eigenvectors
+        self.s_topk = self.s[0:self.k]
+        self.V_topk = self.V[:, 0:self.k]
 
+    def get_pseudodata(self, K:torch.Tensor=None):
+        # K is optional
+        if K is not None:
+            self.fit(K)
+        # Find X such that K = t(X)*X
+        X = torch.mm(self.V, torch.diag(torch.sqrt(self.s)))
+        X = torch.t(X)
+        return X
 #endregion

@@ -7,11 +7,12 @@ from torch.nn import functional as F
 from sklearn.linear_model import ElasticNet
 from sklearn.decomposition import SparsePCA
 
-#region [sparse PCA with Elastic Net] Zou, H., Hastie, T., & Tibshirani, R. (2006).
+
+# region [sparse PCA with Elastic Net] Zou, H., Hastie, T., & Tibshirani, R. (2006).
 class SPCAENobj(PCAobj):
     # sPCA stands for sparse PCA
     # EN stands for elastic net approach
-    def __init__(self, dim:int, l2_lambda:float, l1_lambdas:list, k:int=None):
+    def __init__(self, dim: int, l2_lambda: float, l1_lambdas: list, k: int = None):
         super(SPCAENobj, self).__init__(dim, k)
         assert l2_lambda > 0
         assert all([l1_lambda > 0 for l1_lambda in l1_lambdas])
@@ -20,7 +21,7 @@ class SPCAENobj(PCAobj):
         self.l2_lambda = l2_lambda
         self.l1_lambdas = l1_lambdas
 
-    def fit(self, K:torch.Tensor, max_iter:int=5000, tol:float=1e-4):
+    def fit(self, K: torch.Tensor, max_iter: int = 5000, tol: float = 1e-4):
         # perform classical PCA on K
         super(SPCAENobj, self).fit(K)
 
@@ -44,8 +45,8 @@ class SPCAENobj(PCAobj):
                 l1_lambda = self.l1_lambdas[j]
 
                 # get beta estimates. implementation in sklearn uses coordinate algorithm
-                alpha = 2*self.l2_lambda + l1_lambda
-                l1_ratio = l1_lambda/(l1_lambda + 2*self.l2_lambda)
+                alpha = 2 * self.l2_lambda + l1_lambda
+                l1_ratio = l1_lambda / (l1_lambda + 2 * self.l2_lambda)
                 model = ElasticNet(alpha=alpha, l1_ratio=l1_ratio, fit_intercept=False,
                                    precompute=K.numpy())
                 model.fit(X.numpy(), Y.numpy())
@@ -72,15 +73,17 @@ class SPCAENobj(PCAobj):
         # normalize each column of B by 2-norm
         B = F.normalize(B, dim=0)
         return B
-#endregion
 
 
-#region [sparse PCA with L1 Sparse Coding] Mairal, J., Bach, F., Ponce, J., & Sapiro, G. (2009, June).
+# endregion
+
+
+# region [sparse PCA with L1 Sparse Coding] Mairal, J., Bach, F., Ponce, J., & Sapiro, G. (2009, June).
 class SPCAL1obj(PCAobj):
     # sPCA stands for sparse PCA
     # L1 stands for L1 sparse coding approach
     # as implemented in sklearn
-    def __init__(self, dim:int, alpha:float=1, ridge_alpha:list=0.01, k:int=None):
+    def __init__(self, dim: int, alpha: float = 1, ridge_alpha: float = 0.01, k: int = None):
         super(SPCAL1obj, self).__init__(dim, k)
         assert ridge_alpha > 0, f'Positive alpha should be passed, but got {ridge_alpha}\n'
         assert alpha > 0, f'Positive alpha should be passed, but got {alpha}\n'
@@ -88,7 +91,7 @@ class SPCAL1obj(PCAobj):
         self.alpha = alpha
         self.ridge_alpha = ridge_alpha
 
-    def fit(self, K:torch.Tensor, max_iter:int=1000, tol:float=1e-6, method:str='lars'):
+    def fit(self, K: torch.Tensor, max_iter: int = 1000, tol: float = 1e-6, method: str = 'lars'):
         # perform classical PCA on K
         super(SPCAL1obj, self).fit(K)
 
@@ -100,14 +103,16 @@ class SPCAL1obj(PCAobj):
         # algorithm
         model.fit(X)
         return torch.t(torch.Tensor(model.components_))
-#endregion
 
 
-#region [block sparse PCA with GPower l0 penalty] Journée, M., Nesterov, Y., Richtárik, P., & Sepulchre, R. (2010).
+# endregion
+
+
+# region [block sparse PCA with GPower l0 penalty] Journée, M., Nesterov, Y., Richtárik, P., & Sepulchre, R. (2010).
 class SPCABlockl0(PCAobj):
     # sPCA stands for sparse PCA
     # Block l0 stands for L0 penalty in block
-    def __init__(self, dim:int, gamma:list=None, mu:list=None, k:int=None,
+    def __init__(self, dim: int, gamma: list = None, mu: list = None, k: int = None,
                  max_iter: int = 1000, tol: float = 1e-4, trace: bool = True):
         super(SPCABlockl0, self).__init__(dim, k)
 
@@ -124,22 +129,22 @@ class SPCABlockl0(PCAobj):
         self.tol = tol
         self.trace = trace
 
-    def fit(self, K:torch.Tensor, data:torch.Tensor=None):
+    def fit(self, K: torch.Tensor, data: torch.Tensor = None):
         # perform classical PCA on K
         super(SPCABlockl0, self).fit(K)
 
         # Check if data is provided
         A = data
         if data is None and K is not None:
-            A = self.get_pseudodata() # where t(A)*A = K
+            A = self.get_pseudodata()  # where t(A)*A = K
 
         # initialize parameters
         idx_max = torch.argmax(torch.norm(A, dim=0))
-        a_norm_max = torch.norm(A[:, idx_max]) # should be 1 if K is provided
+        a_norm_max = torch.norm(A[:, idx_max])  # should be 1 if K is provided
 
         # initialize X by QR of [column of A with max norm | randn matrix], recommended in the paper
         X_init = torch.randn((self.dim, self.k), dtype=torch.float64)
-        X_init[:, 0] = A[:, idx_max]/a_norm_max
+        X_init[:, 0] = A[:, idx_max] / a_norm_max
         X, R = linalg.qr(X_init)
         gamma = self.gamma * torch.square(torch.matmul(torch.t(R), self.mu))  # rescale sparsity factor
 
@@ -168,10 +173,10 @@ class SPCABlockl0(PCAobj):
 
                 for j in range(self.k):
                     pattern = tresh[:, j] > 0.0
-                    if torch.sum(pattern) > 1: # matrix-vector product
+                    if torch.sum(pattern) > 1:  # matrix-vector product
                         grad[:, j] = torch.matmul(A[:, pattern], dot_prod_ax[pattern, j])
 
-                    elif torch.sum(pattern) == 1: # vector-scalar product
+                    elif torch.sum(pattern) == 1:  # vector-scalar product
                         grad[:, j] = A[:, pattern].flatten() * dot_prod_ax[pattern, j]
 
                     # otherwise, pattern has all False. do nothing. scale gradient for all cases
@@ -182,7 +187,7 @@ class SPCABlockl0(PCAobj):
             X = torch.mm(U, Vh)
 
             # convergence condition
-            if iter > 1 and (cost - cost_prev)/cost_prev < self.tol:
+            if iter > 1 and (cost - cost_prev) / cost_prev < self.tol:
                 break
 
             iter += 1
@@ -191,15 +196,15 @@ class SPCABlockl0(PCAobj):
         if self.trace:
             if iter >= self.max_iter:
                 print(f'Maximum iteration exceeds: {self.max_iter}.\n'
-                      f'Relative cost difference: {(cost - cost_prev)/cost_prev}.\n')
+                      f'Relative cost difference: {(cost - cost_prev) / cost_prev}.\n')
             elif torch.abs(cost) < 1e-13:
                 print(f'Sparsity factors are too high.\n')
             else:
                 print(f'Number of iterations: {iter}. Convergence achieved.\n')
 
         # locally optimal sparsity pattern
-        P = torch.where(torch.square(torch.matmul(torch.t(A), X * self.mu.repeat((self.dim, 1)))) >
-                        gamma.repeat((self.dim, 1)), 1, 0)
+        mask = torch.Tensor(torch.square(torch.matmul(torch.t(A), X * self.mu.repeat((self.dim, 1)))) > gamma.repeat((self.dim, 1)))
+        P = torch.where(mask, 1, 0)
         P_inv = P == 0
 
         # postprocessing for sparse loading
@@ -211,27 +216,41 @@ class SPCABlockl0(PCAobj):
         if torch.any(torch.isnan(Z)): print('Nan found in sparse loading\n')
         Z = torch.nan_to_num(Z)
         return Z
-#endregion
 
 
-#region [Single unit sparse PCA with GPower l0 penalty] Journée, M., Nesterov, Y., Richtárik, P., & Sepulchre, R. (2010).
+# endregion
+
+
+# TODO: Complete single unit sparse PCA [2022 JUL 03]
+
+# region [Single unit sparse PCA with GPower l0 penalty] Journée, M., Nesterov, Y., Richtárik, P., & Sepulchre, R. (2010).
 class SPCASingleUnitl0(PCAobj):
     # sPCA stands for sparse PCA
     # SingleUnitl0 stands for L0 penalty and components are extracted unit by unit
-    def __init__(self, dim:int, gamma:list=None, k:int=None,
+    def __init__(self, dim: int, gamma: float = None, k: int = None,
                  max_iter: int = 1000, tol: float = 1e-4, trace: bool = True):
         super(SPCASingleUnitl0, self).__init__(dim, k)
 
         # validation for hyperparameters
         assert gamma is not None, f'hyperparameters should be provided\n'
-        assert len(gamma) == k, f'invalid length for gamma, got: {len(gamma)}\n'
-        assert all([g > 0 and g <= 1 for g in gamma]), f'invalid range for gamma, got: {gamma}\n'
+        assert gamma > 0 and gamma <= 1, f'invalid range for gamma, got: {gamma}\n'
 
         self.gamma = torch.Tensor(gamma).double()
         self.max_iter = max_iter
         self.tol = tol
         self.trace = trace
 
-    def fit(self, K:torch.Tensor, data:torch.Tensor=None):
+    def fit(self, K: torch.Tensor, data: torch.Tensor = None):
         # perform classical PCA on K
         super(SPCASingleUnitl0, self).fit(K)
+
+        # loop each component
+        for comp in range(self.k):
+            # Check if data is provided
+            A = data
+            if data is None and K is not None:
+                A = self.get_pseudodata()  # where t(A)*A = K
+
+            # initialize parameters
+            idx_max = torch.argmax(torch.norm(A, dim=0))
+            a_norm_max = torch.norm(A[:, idx_max])  # should be 1 if K is provided

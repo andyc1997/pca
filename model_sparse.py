@@ -162,7 +162,7 @@ class SPCABlockl0(PCAobj):
             dot_prod_ax *= self.mu.repeat((self.dim, 1))
             tresh = torch.clamp(torch.square(dot_prod_ax) - gamma.repeat((self.dim, 1)), 0)
 
-            # update cost, terminate if it converged
+            # update cost, terminate if it becomes too sparse
             cost = torch.sum(tresh)
             if torch.abs(cost) < 1e-13:
                 break
@@ -221,8 +221,6 @@ class SPCABlockl0(PCAobj):
 # endregion
 
 
-# TODO: Complete single unit sparse PCA [2022 JUL 03]
-
 # region [Single unit sparse PCA with GPower l0 penalty] Journée, M., Nesterov, Y., Richtárik, P., & Sepulchre, R. (2010).
 class SPCASingleUnitl0(PCAobj):
     # sPCA stands for sparse PCA
@@ -235,7 +233,7 @@ class SPCASingleUnitl0(PCAobj):
         assert gamma is not None, f'hyperparameters should be provided\n'
         assert gamma > 0 and gamma <= 1, f'invalid range for gamma, got: {gamma}\n'
 
-        self.gamma = torch.Tensor(gamma).double()
+        self.gamma = gamma
         self.max_iter = max_iter
         self.tol = tol
         self.trace = trace
@@ -243,14 +241,80 @@ class SPCASingleUnitl0(PCAobj):
     def fit(self, K: torch.Tensor, data: torch.Tensor = None):
         # perform classical PCA on K
         super(SPCASingleUnitl0, self).fit(K)
+        Z = torch.zeros((self.dim, self.k))
+
+        # Check if data is provided
+        A = data
+        if data is None and K is not None:
+            A = self.get_pseudodata()  # where t(A)*A = K
 
         # loop each component
         for comp in range(self.k):
-            # Check if data is provided
-            A = data
-            if data is None and K is not None:
-                A = self.get_pseudodata()  # where t(A)*A = K
-
             # initialize parameters
             idx_max = torch.argmax(torch.norm(A, dim=0))
             a_norm_max = torch.norm(A[:, idx_max])  # should be 1 if K is provided
+            x = A[:, idx_max] / a_norm_max
+            gamma = self.gamma * torch.square(a_norm_max)
+
+            # cost
+            cost, cost_prev = 0.0, None
+
+            # algorithm
+            iter = 1
+            while iter < self.max_iter:
+                # save previous status
+                cost_prev = cost
+
+                # compute threshold
+                dot_prod_ax = torch.matmul(torch.t(A), x)
+                tresh = torch.clamp(torch.square(dot_prod_ax) - gamma, 0)
+
+                # update cost; terminate if too sparse
+                cost = torch.sum(tresh)
+                if torch.abs(cost) < 1e-13:
+                    break
+
+                # compute gradient
+                grad = dot_prod_ax * (tresh > 0).type(torch.float64)
+                grad = torch.matmul(A, grad)
+                x = grad / torch.norm(grad)
+
+                # convergence condition
+                if iter > 1 and (cost - cost_prev) / cost_prev < self.tol:
+                    break
+
+                iter += 1
+
+            # report iterations
+            if self.trace:
+                print(f'PC: {comp}')
+                if iter >= self.max_iter:
+                    print(f'Maximum iteration exceeds: {self.max_iter}.'
+                            f'Relative cost difference: {(cost - cost_prev) / cost_prev}.')
+                elif torch.abs(cost) < 1e-13:
+                    print(f'Sparsity factors are too high.')
+                else:
+                    print(f'Number of iterations: {iter}. Convergence achieved.')
+
+            # locally optimal sparsity pattern
+            z = torch.matmul(torch.t(A), x)
+            mask = torch.square(z - gamma) > 0
+            P = torch.where(mask, 1, 0)
+            P_inv = P == 0
+
+            # postprocessing for sparse loading
+            z[P_inv] = 0
+            z_norm = torch.norm(z)
+            y = x * z_norm
+            z /= z_norm
+
+            print(f'Z[:, comp] shape: {Z[:, comp].shape}')
+            print(f'z shape: {z.shape}')
+
+            # matrix deflation
+            A -= torch.outer(y, z)
+            Z[:, comp] = z
+
+        return Z
+
+

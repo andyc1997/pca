@@ -30,11 +30,13 @@ print(f'Shape of Gram matrix: {K.shape} \n'
 # region read journee simulated data
 X_tr = pd.read_csv(r'.\samples.csv', sep=',', header=None)
 print(f'Shape of training data: {X_tr.shape} \n')
+
+X_tr = torch.Tensor(X_tr.to_numpy()).to(torch.float64)
 # endregion
 
 
 # region debug
-model = SPCASingleUnitl0(500, gamma=0.2, k=2, trace=True)
-Z = model.fit(K)
-print(f'Sparse loading Z: \n{torch.round(Z, decimals=4)}\n')
+model = SPCASingleUnitl0(500, gamma=0.9, k=2, trace=True)
+Z = model.fit(None, data=X_tr)
+print(f'Sparse loading Z: \n{torch.round(Z[:22, :], decimals=4)}\n')
 # endregion

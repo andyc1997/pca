@@ -130,11 +130,12 @@ class SPCABlockl0(PCAobj):
         self.trace = trace
 
     def fit(self, K: torch.Tensor, data: torch.Tensor = None):
-        # perform classical PCA on K
-        super(SPCABlockl0, self).fit(K)
+        if K is not None:
+            # perform classical PCA on K
+            super(SPCABlockl0, self).fit(K)
 
         # Check if data is provided
-        A = data
+        A = data.clone()
         if data is None and K is not None:
             A = self.get_pseudodata()  # where t(A)*A = K
 
@@ -240,11 +241,12 @@ class SPCASingleUnitl0(PCAobj):
 
     def fit(self, K: torch.Tensor, data: torch.Tensor = None):
         # perform classical PCA on K
-        super(SPCASingleUnitl0, self).fit(K)
-        Z = torch.zeros((self.dim, self.k))
+        if K is not None:
+            super(SPCASingleUnitl0, self).fit(K)
+        Z = torch.zeros((self.dim, self.k), dtype=torch.float64)
 
         # Check if data is provided
-        A = data
+        A = data.clone()
         if data is None and K is not None:
             A = self.get_pseudodata()  # where t(A)*A = K
 
@@ -287,7 +289,7 @@ class SPCASingleUnitl0(PCAobj):
 
             # report iterations
             if self.trace:
-                print(f'PC: {comp}')
+                print(f'PC: {comp+1}')
                 if iter >= self.max_iter:
                     print(f'Maximum iteration exceeds: {self.max_iter}.'
                             f'Relative cost difference: {(cost - cost_prev) / cost_prev}.')
@@ -298,7 +300,7 @@ class SPCASingleUnitl0(PCAobj):
 
             # locally optimal sparsity pattern
             z = torch.matmul(torch.t(A), x)
-            mask = torch.square(z - gamma) > 0
+            mask = torch.square(z) - gamma > 0
             P = torch.where(mask, 1, 0)
             P_inv = P == 0
 
@@ -307,9 +309,6 @@ class SPCASingleUnitl0(PCAobj):
             z_norm = torch.norm(z)
             y = x * z_norm
             z /= z_norm
-
-            print(f'Z[:, comp] shape: {Z[:, comp].shape}')
-            print(f'z shape: {z.shape}')
 
             # matrix deflation
             A -= torch.outer(y, z)

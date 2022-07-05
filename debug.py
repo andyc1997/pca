@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import torch
 
-from model_sparse import SPCASingleUnitl0
+from model_sparse import SPCAENobj
 
 # DRAFT ONLY for development.
 
@@ -36,7 +36,7 @@ X_tr = torch.Tensor(X_tr.to_numpy()).to(torch.float64)
 
 
 # region debug
-model = SPCASingleUnitl0(500, gamma=0.9, k=2, trace=True)
+model = SPCAENobj(500, k=2, l2_lambda=1, l1_lambdas=[1, 1])
 Z = model.fit(None, data=X_tr)
-print(f'Sparse loading Z: \n{torch.round(Z[:22, :], decimals=4)}\n')
+print(f'Sparse loading Z: \n{torch.round(Z[:20, :], decimals=4)}\n')
 # endregion

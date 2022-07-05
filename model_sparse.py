@@ -12,28 +12,38 @@ from sklearn.decomposition import SparsePCA
 class SPCAENobj(PCAobj):
     # sPCA stands for sparse PCA
     # EN stands for elastic net approach
-    def __init__(self, dim: int, l2_lambda: float, l1_lambdas: list, k: int = None):
+    def __init__(self, dim: int, l2_lambda: float, l1_lambdas: list, k: int = None,
+                 max_iter: int = 5000, tol: float = 1e-4):
         super(SPCAENobj, self).__init__(dim, k)
         assert l2_lambda > 0
         assert all([l1_lambda > 0 for l1_lambda in l1_lambdas])
         assert len(l1_lambdas) == self.k
-
         self.l2_lambda = l2_lambda
         self.l1_lambdas = l1_lambdas
+        self.max_iter = max_iter
+        self.tol = tol
 
-    def fit(self, K: torch.Tensor, max_iter: int = 5000, tol: float = 1e-4):
-        # perform classical PCA on K
-        super(SPCAENobj, self).fit(K)
+    def fit(self, K: torch.Tensor, data: torch.Tensor = None):
+        if K is not None and data is None:
+            # perform classical PCA on K to find X and estimate A
+            super(SPCAENobj, self).fit(K)
+            X = self.get_pseudodata()
+
+        else:
+            # perform classical PCA on K to estimate A
+            X = data.clone()
+            K = torch.mm(torch.t(X), X)
+            super(SPCAENobj, self).fit(K)
 
         # initialize parameters
         A = self.V_topk.clone()
         B = torch.zeros((self.dim, self.k), dtype=torch.float64)
-        X = self.get_pseudodata()
+
         A_prev, B_prev = None, None
 
         # alternate algorithm
         iter = 1
-        while iter < max_iter:
+        while iter < self.max_iter:
             # save previous status
             A_prev, B_prev = A.clone(), B.clone()
 
@@ -57,14 +67,14 @@ class SPCAENobj(PCAobj):
             A = torch.mm(U, Vh)
 
             # convergence
-            if torch.max(torch.abs(A - A_prev)) < tol and torch.max(torch.abs(B - B_prev)) < tol:
+            if torch.max(torch.abs(A - A_prev)) < self.tol and torch.max(torch.abs(B - B_prev)) < self.tol:
                 break
 
             iter += 1
 
         # report iterations
-        if iter == max_iter:
-            print(f'\nMaximum iteration exceeds: {max_iter}.\n'
+        if iter == self.max_iter:
+            print(f'\nMaximum iteration exceeds: {self.max_iter}.\n'
                   f'\nMaximum absolute difference in A: {torch.max(torch.abs(A - A_prev))}.\n'
                   f'\nMaximum absolute difference in B: {torch.max(torch.abs(B - B_prev))}.\n')
         else:
@@ -83,22 +93,29 @@ class SPCAL1obj(PCAobj):
     # sPCA stands for sparse PCA
     # L1 stands for L1 sparse coding approach
     # as implemented in sklearn
-    def __init__(self, dim: int, alpha: float = 1, ridge_alpha: float = 0.01, k: int = None):
+    def __init__(self, dim: int, alpha: float = 1, ridge_alpha: float = 0.01, k: int = None,
+                 max_iter: int = 1000, tol: float = 1e-6, method: str = 'lars'):
         super(SPCAL1obj, self).__init__(dim, k)
         assert ridge_alpha > 0, f'Positive alpha should be passed, but got {ridge_alpha}\n'
         assert alpha > 0, f'Positive alpha should be passed, but got {alpha}\n'
-
         self.alpha = alpha
         self.ridge_alpha = ridge_alpha
+        self.max_iter = max_iter
+        self.tol = tol
+        self.method = method
 
-    def fit(self, K: torch.Tensor, max_iter: int = 1000, tol: float = 1e-6, method: str = 'lars'):
-        # perform classical PCA on K
-        super(SPCAL1obj, self).fit(K)
+    def fit(self, K: torch.Tensor, data: torch.Tensor = None):
+        if K is not None and data is None:
+            # perform classical PCA on K
+            super(SPCAL1obj, self).fit(K)
+            # initialize parameters
+            X = self.get_pseudodata().numpy()
+        else:
+            X = data.numpy()
 
-        # initialize parameters
-        X = self.get_pseudodata().numpy()
+        # from scikit learn
         model = SparsePCA(n_components=self.k, alpha=self.alpha, ridge_alpha=self.ridge_alpha,
-                          max_iter=max_iter, tol=tol, method=method)
+                          max_iter=self.max_iter, tol=self.tol, method=self.method)
 
         # algorithm
         model.fit(X)
@@ -204,7 +221,8 @@ class SPCABlockl0(PCAobj):
                 print(f'Number of iterations: {iter}. Convergence achieved.\n')
 
         # locally optimal sparsity pattern
-        mask = torch.Tensor(torch.square(torch.matmul(torch.t(A), X * self.mu.repeat((self.dim, 1)))) > gamma.repeat((self.dim, 1)))
+        mask = torch.Tensor(
+            torch.square(torch.matmul(torch.t(A), X * self.mu.repeat((self.dim, 1)))) > gamma.repeat((self.dim, 1)))
         P = torch.where(mask, 1, 0)
         P_inv = P == 0
 
@@ -289,10 +307,10 @@ class SPCASingleUnitl0(PCAobj):
 
             # report iterations
             if self.trace:
-                print(f'PC: {comp+1}')
+                print(f'PC: {comp + 1}')
                 if iter >= self.max_iter:
                     print(f'Maximum iteration exceeds: {self.max_iter}.'
-                            f'Relative cost difference: {(cost - cost_prev) / cost_prev}.')
+                          f'Relative cost difference: {(cost - cost_prev) / cost_prev}.')
                 elif torch.abs(cost) < 1e-13:
                     print(f'Sparsity factors are too high.')
                 else:
@@ -315,5 +333,33 @@ class SPCASingleUnitl0(PCAobj):
             Z[:, comp] = z
 
         return Z
+# endregion
 
 
+# region [Truncated Power Method for sparse PCA]
+class SPCATPower(PCAobj):
+    # sPCA stands for sparse PCA
+    # TPower stands for truncated power method and components are extracted unit by unit
+    def __init__(self, dim: int, gamma: float = None, k: int = None,
+                 max_iter: int = 1000, tol: float = 1e-4, trace: bool = True):
+        super(SPCASingleUnitl0, self).__init__(dim, k)
+
+        # validation for hyperparameters
+        assert gamma is not None, f'hyperparameters should be provided\n'
+        assert gamma > 0 and gamma <= 1, f'invalid range for gamma, got: {gamma}\n'
+
+        self.gamma = gamma
+        self.max_iter = max_iter
+        self.tol = tol
+        self.trace = trace
+
+    def fit(self, K: torch.Tensor, data: torch.Tensor = None):
+        # perform classical PCA on K
+        if K is not None:
+            super(SPCASingleUnitl0, self).fit(K)
+        Z = torch.zeros((self.dim, self.k), dtype=torch.float64)
+
+        # Check if data is provided
+        A = data.clone()
+        if data is None and K is not None:
+            A = self.get_pseudodata()  # where t(A)*A = K

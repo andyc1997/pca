@@ -141,7 +141,7 @@ class SPCABlockl0(PCAobj):
         assert gamma is not None and mu is not None, f'hyperparameters should be provided\n'
         assert len(gamma) == k, f'invalid length for gamma, got: {len(gamma)}\n'
         assert len(mu) == k, f'invalid length for mu, got: {len(mu)}\n'
-        assert all([g > 0 and g <= 1 for g in gamma]), f'invalid range for gamma, got: {gamma}\n'
+        assert all([0 < g <= 1 for g in gamma]), f'invalid range for gamma, got: {gamma}\n'
         assert all([m > 0 for m in mu]), f'invalid range for mu, got: {mu}\n'
 
         self.gamma = torch.Tensor(gamma).double()
@@ -253,7 +253,7 @@ class SPCASingleUnitl0(PCAobj):
         super(SPCASingleUnitl0, self).__init__(dim, k)
 
         assert gamma is not None, f'hyperparameters should be provided\n'
-        assert gamma > 0 and gamma <= 1, f'invalid range for gamma, got: {gamma}\n'
+        assert 0 < gamma <= 1, f'invalid range for gamma, got: {gamma}\n'
 
         self.gamma = gamma
         self.max_iter = max_iter
@@ -348,7 +348,7 @@ class SPCATPower(PCAobj):
         super(SPCATPower, self).__init__(dim, k)
 
         assert card is not None, f'hyperparameters should be provided\n'
-        assert len(card) == k and all([k > 0 and k <= 1 for k in card]), f'invalid range for card, got: {card}\n'
+        assert len(card) == k and all([0 < k <= 1 for k in card]), f'invalid range for card, got: {card}\n'
 
         self.card = card
         self.max_iter = max_iter

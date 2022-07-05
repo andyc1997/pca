@@ -15,9 +15,11 @@ class SPCAENobj(PCAobj):
     def __init__(self, dim: int, l2_lambda: float, l1_lambdas: list, k: int = None,
                  max_iter: int = 5000, tol: float = 1e-4):
         super(SPCAENobj, self).__init__(dim, k)
+
         assert l2_lambda > 0
         assert all([l1_lambda > 0 for l1_lambda in l1_lambdas])
         assert len(l1_lambdas) == self.k
+
         self.l2_lambda = l2_lambda
         self.l1_lambdas = l1_lambdas
         self.max_iter = max_iter
@@ -96,8 +98,10 @@ class SPCAL1obj(PCAobj):
     def __init__(self, dim: int, alpha: float = 1, ridge_alpha: float = 0.01, k: int = None,
                  max_iter: int = 1000, tol: float = 1e-6, method: str = 'lars'):
         super(SPCAL1obj, self).__init__(dim, k)
+
         assert ridge_alpha > 0, f'Positive alpha should be passed, but got {ridge_alpha}\n'
         assert alpha > 0, f'Positive alpha should be passed, but got {alpha}\n'
+
         self.alpha = alpha
         self.ridge_alpha = ridge_alpha
         self.max_iter = max_iter
@@ -248,7 +252,6 @@ class SPCASingleUnitl0(PCAobj):
                  max_iter: int = 1000, tol: float = 1e-4, trace: bool = True):
         super(SPCASingleUnitl0, self).__init__(dim, k)
 
-        # validation for hyperparameters
         assert gamma is not None, f'hyperparameters should be provided\n'
         assert gamma > 0 and gamma <= 1, f'invalid range for gamma, got: {gamma}\n'
 
@@ -340,26 +343,77 @@ class SPCASingleUnitl0(PCAobj):
 class SPCATPower(PCAobj):
     # sPCA stands for sparse PCA
     # TPower stands for truncated power method and components are extracted unit by unit
-    def __init__(self, dim: int, gamma: float = None, k: int = None,
+    def __init__(self, dim: int, card: float = None, k: int = None, max_n_reduce: int = 5,
                  max_iter: int = 1000, tol: float = 1e-4, trace: bool = True):
-        super(SPCASingleUnitl0, self).__init__(dim, k)
+        super(SPCATPower, self).__init__(dim, k)
 
-        # validation for hyperparameters
-        assert gamma is not None, f'hyperparameters should be provided\n'
-        assert gamma > 0 and gamma <= 1, f'invalid range for gamma, got: {gamma}\n'
+        assert card is not None, f'hyperparameters should be provided\n'
+        assert len(card) == k and all([k > 0 for k in card]), f'invalid range for card, got: {card}\n'
 
-        self.gamma = gamma
+        self.card = card
         self.max_iter = max_iter
+        self.max_n_reduce = max_n_reduce
         self.tol = tol
         self.trace = trace
 
     def fit(self, K: torch.Tensor, data: torch.Tensor = None):
-        # perform classical PCA on K
-        if K is not None:
-            super(SPCASingleUnitl0, self).fit(K)
-        Z = torch.zeros((self.dim, self.k), dtype=torch.float64)
-
         # Check if data is provided
-        A = data.clone()
-        if data is None and K is not None:
-            A = self.get_pseudodata()  # where t(A)*A = K
+        if K is None:
+            K = torch.mm(torch.t(data), data)
+
+        # perform classical PCA on K
+        super(SPCATPower, self).fit(K)
+
+        # Initialize parameters
+        Z = self.V_topk
+        A = K.clone()
+        card_grid = [1/(m+1) for m in range(self.max_n_reduce)]
+
+        # extract component unit by unit
+        for comp in range(self.k):
+            # reduced-k method
+            is_reduce = True
+            i = 0
+            while is_reduce:
+                # set cardinality
+                card = card_grid[i]
+                if self.card[comp] >= card_grid[i]:
+                    card = self.card[comp]
+                    is_reduce = False
+
+                diff = 0.0
+                iter = 0
+                while iter < self.max_iter:
+                    # truncate
+                    z_init = Z[:, comp]
+                    z_proj = torch.matmul(A, z_init)
+                    z_proj /= torch.norm(z_proj)
+
+                    (_, ind_topk) = torch.topk(torch.abs(z_proj), k=card)
+                    z = self._truncate(z_proj, ind_topk)
+                    Z[:, comp] = z / torch.norm(z)
+
+                    # convergence check
+                    if torch.norm(z - z_init) < self.tol:
+                        diff = torch.norm(z - z_init)
+                        break
+
+                    iter += 1
+
+                if iter >= self.max_iter:
+                    # report iterations
+                    if self.trace:
+                        print(f'Maximum iteration exceeds: {self.max_iter}.'
+                              f'Relative cost difference: {torch.round(diff, decimals=6)}.')
+
+    def _truncate(self, z:torch.Tensor, ind_topk:torch.Tensor):
+        # implement according to def 1
+        # ind_topk: top k indices of abs(x) in abs val
+        # z: tensor
+        idx = torch.ones(self.dim)
+        idx[ind_topk] = 0
+        z[idx.type(torch.bool)] = 0
+        return z
+
+
+

@@ -1,5 +1,5 @@
 import torch
-import numpy
+import math
 
 from model import PCAobj
 from torch import linalg
@@ -339,16 +339,16 @@ class SPCASingleUnitl0(PCAobj):
 # endregion
 
 
-# region [Truncated Power Method for sparse PCA]
+# region [Truncated Power Method for sparse PCA] Yuan, X. T., & Zhang, T. (2013).
 class SPCATPower(PCAobj):
     # sPCA stands for sparse PCA
     # TPower stands for truncated power method and components are extracted unit by unit
-    def __init__(self, dim: int, card: float = None, k: int = None, max_n_reduce: int = 5,
+    def __init__(self, dim: int, card: list = None, k: int = None, max_n_reduce: int = 5,
                  max_iter: int = 1000, tol: float = 1e-4, trace: bool = True):
         super(SPCATPower, self).__init__(dim, k)
 
         assert card is not None, f'hyperparameters should be provided\n'
-        assert len(card) == k and all([k > 0 for k in card]), f'invalid range for card, got: {card}\n'
+        assert len(card) == k and all([k > 0 and k <= 1 for k in card]), f'invalid range for card, got: {card}\n'
 
         self.card = card
         self.max_iter = max_iter
@@ -374,6 +374,10 @@ class SPCATPower(PCAobj):
             # reduced-k method
             is_reduce = True
             i = 0
+
+            if self.trace:
+                print(f'PC: {comp}:')
+
             while is_reduce:
                 # set cardinality
                 card = card_grid[i]
@@ -383,28 +387,35 @@ class SPCATPower(PCAobj):
 
                 diff = 0.0
                 iter = 0
-                while iter < self.max_iter:
+                is_converge = False
+                while not is_converge:
                     # truncate
                     z_init = Z[:, comp]
                     z_proj = torch.matmul(A, z_init)
                     z_proj /= torch.norm(z_proj)
 
-                    (_, ind_topk) = torch.topk(torch.abs(z_proj), k=card)
+                    (_, ind_topk) = torch.topk(torch.abs(z_proj), k=math.floor(card*self.dim))
                     z = self._truncate(z_proj, ind_topk)
                     Z[:, comp] = z / torch.norm(z)
 
                     # convergence check
                     if torch.norm(z - z_init) < self.tol:
                         diff = torch.norm(z - z_init)
-                        break
+                        is_converge = True
+                        if self.trace:
+                            print(f'Convergence achieved at {iter}')
+
+                    # max iteration
+                    if iter >= self.max_iter:
+                        is_converge = True
+                        # report iterations
+                        if self.trace:
+                            print(f'Maximum iteration exceeds: {self.max_iter}.'
+                                  f'Relative cost difference: {torch.round(diff, decimals=6)}.')
 
                     iter += 1
-
-                if iter >= self.max_iter:
-                    # report iterations
-                    if self.trace:
-                        print(f'Maximum iteration exceeds: {self.max_iter}.'
-                              f'Relative cost difference: {torch.round(diff, decimals=6)}.')
+                i += 1
+        return Z
 
     def _truncate(self, z:torch.Tensor, ind_topk:torch.Tensor):
         # implement according to def 1
@@ -415,5 +426,6 @@ class SPCATPower(PCAobj):
         z[idx.type(torch.bool)] = 0
         return z
 
+# endregion
 
 

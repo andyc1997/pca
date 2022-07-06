@@ -38,8 +38,6 @@ class PCAobj:
         X = torch.mm(self.V, torch.diag(torch.sqrt(self.s)))
         X = torch.t(X)
         return X
-
-
 # endregion
 
 
@@ -70,9 +68,45 @@ class VarExplain:
 
 # region
 class SparseDeflate:
-    def __init__(self, method: str = ''):
+    def __init__(self, method: str = 'hotelling'):
         self.method = method
 
-    def fit(self, K: torch.Tensor, data: torch.Tensor = None):
-        pass
+    def fit(self, K: torch.Tensor, x: torch.Tensor, data: torch.Tensor = None):
+        # SPCA deflation
+        if self.method == 'hotelling':
+            K = self._hotelling(K, x)
+        elif self.method == 'projection':
+            K = self._projection(K, x)
+
+        return K
+
+    # Hotelling's deflation
+    @staticmethod
+    def _hotelling(K: torch.Tensor, x: torch.Tensor):
+        xKx = torch.inner(x, torch.matmul(K, x))
+        K -= torch.outer(x, x) * xKx
+        return K
+
+    # Projection deflation
+    @staticmethod
+    def _projection(K: torch.Tensor, x: torch.Tensor):
+        Kx = torch.matmul(K, x)
+        xKx = torch.inner(x, Kx)
+        x_Kx = torch.outer(x, Kx)
+        K -= x_Kx
+        K -= torch.t(x_Kx)
+        K += torch.outer(x, x) * xKx
+        return K
+
+    @staticmethod
+    def _projection_data(data: torch.Tensor, x: torch.Tensor):
+        data -= torch.outer(x, x)
+
+    # Schur complement deflation, equivalent to orthogonalized Schur complement deflation
+    @staticmethod
+    def _schur(K: torch.Tensor, x: torch.Tensor):
+        Kx = torch.matmul(K, x)
+        K -= torch.outer(Kx, Kx)/torch.inner(x, Kx)
+        return K
+
 # endregion

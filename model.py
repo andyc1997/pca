@@ -98,9 +98,10 @@ class SparseDeflate:
         K += torch.outer(x, x) * xKx
         return K
 
-    @staticmethod
+    @staticmethod # when data matrix is given instead of covariance matrix
     def _projection_data(data: torch.Tensor, x: torch.Tensor):
-        data -= torch.outer(x, x)
+        data -= torch.mm(data, torch.outer(x, x))
+        return data
 
     # Schur complement deflation, equivalent to orthogonalized Schur complement deflation
     @staticmethod
@@ -109,4 +110,10 @@ class SparseDeflate:
         K -= torch.outer(Kx, Kx)/torch.inner(x, Kx)
         return K
 
+    @staticmethod # when data matrix is given instead of covariance matrix
+    def _schur_data(data: torch.Tensor, x: torch.Tensor):
+        Xz = torch.matmul(data, x)
+        data -= torch.mm(torch.outer(Xz, Xz)/torch.inner(Xz, Xz), data)
+        return data
+    
 # endregion

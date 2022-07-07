@@ -71,7 +71,7 @@ class VarExplain:
 
 # region
 class SparseDeflate:
-    def __init__(self, dim: int, method: str = 'hotelling', is_data: bool = False,
+    def __init__(self, dim: int = 0, method: str = 'hotelling', is_data: bool = False,
                  is_ortho: bool = False):
         # method specification
         self.method = method
@@ -83,7 +83,7 @@ class SparseDeflate:
         self.Q = None
         if self.is_ortho:
             self.count = 0
-            self.Q = torch.zeros(self.dim, self.dim)
+            self.Q = torch.zeros(dim, dim)
 
     def fit(self, K: torch.Tensor, x: torch.Tensor, data: torch.Tensor = None):
         # SPCA deflation
@@ -109,11 +109,11 @@ class SparseDeflate:
     @staticmethod
     def _ortho_hotelling(K: torch.Tensor, x: torch.Tensor, count: int,
                          Q: torch.Tensor):
-        assert count >= 0, f'Count should be nonnegative, but got {count}'
         # standard Hotelling's deflation for the first round
         if count == 0:
             Q[:, count] = x
             return SparseDeflate()._hotelling(K, x)
+
         # OHD for the subsequent round
         else:
             # Gram-Schmidt process
@@ -138,6 +138,24 @@ class SparseDeflate:
     def _projection_data(data: torch.Tensor, x: torch.Tensor):
         data -= torch.mm(data, torch.outer(x, x))
         return data
+
+    # Orthogonalized projection deflation
+    @staticmethod
+    def _ortho_projection(K: torch.Tensor, x: torch.Tensor, count: int,
+                         Q: torch.Tensor):
+        # standard Hotelling's deflation for the first round
+        if count == 0:
+            Q[:, count] = x
+            return SparseDeflate()._projection(K, x)
+
+        # OHD for the subsequent round
+        else:
+            # Gram-Schmidt process
+            Q[:, count] = x - torch.matmul(
+                torch.mm(Q[:, 0:count], torch.t(Q[:, 0:count])),
+                x)
+            Q[:, count] /= torch.norm(Q[:, count])
+            return SparseDeflate()._projection(K, Q[:, count]), Q, count+1
 
     # Schur complement deflation, equivalent to orthogonalized Schur complement deflation
     @staticmethod

@@ -438,4 +438,3 @@ class SPCATPower(PCAobj):
 
 # endregion
 
-

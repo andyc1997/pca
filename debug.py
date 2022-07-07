@@ -38,8 +38,8 @@ K = torch.mm(torch.t(X_tr), X_tr)
 
 
 # region debug
-# model = SPCATPower(500, k=2, card=[0.2, 0.2], max_iter=2000)
-model = SPCASingleUnitl0(500, gamma=0.3, k=5)
+model = SPCATPower(500, k=2, card=[0.2, 0.2], max_iter=2000)
+# model = SPCASingleUnitl0(500, gamma=0.3, k=5)
 Z = model.fit(K)
 print(f'Sparse loading Z: \n{torch.round(Z[:22, :], decimals=4)}\n')
 # endregion

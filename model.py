@@ -86,7 +86,7 @@ class SparseDeflate:
             self.count = 0
             self.Q = torch.zeros(dim, dim)
 
-    def fit(self, K: torch.Tensor, x: torch.Tensor, data: torch.Tensor = None):
+    def fit(self, K: torch.Tensor, x: torch.Tensor, data: torch.Tensor = None) -> object:
         # SPCA deflation
         if self.method == 'hotelling':
             assert self.is_data is False, f'Hotelling method does not support data matrix.'

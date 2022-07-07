@@ -3,7 +3,7 @@ import pandas as pd
 import torch
 
 from model import VarExplain
-from model_sparse import SPCATPower
+from model_sparse import SPCATPower, SPCASingleUnitl0
 
 # DRAFT ONLY for development.
 
@@ -33,12 +33,14 @@ X_tr = pd.read_csv(r'.\samples.csv', sep=',', header=None)
 print(f'Shape of training data: {X_tr.shape} \n')
 
 X_tr = torch.Tensor(X_tr.to_numpy()).to(torch.float64)
+K = torch.mm(torch.t(X_tr), X_tr)
 # endregion
 
 
 # region debug
-model = SPCATPower(500, k=5, card=[0.5, 0.5, 0.5, 0.5, 0.5], max_iter=2000)
-Z = model.fit(None, data=X_tr)
+# model = SPCATPower(500, k=2, card=[0.2, 0.2], max_iter=2000)
+model = SPCASingleUnitl0(500, gamma=0.3, k=5)
+Z = model.fit(K)
 print(f'Sparse loading Z: \n{torch.round(Z[:22, :], decimals=4)}\n')
 # endregion
 

@@ -265,9 +265,11 @@ class SPCASingleUnitl0(PCAobj):
         if K is not None:
             super(SPCASingleUnitl0, self).fit(K)
         Z = torch.zeros((self.dim, self.k), dtype=torch.float64)
+        deflator = SparseDeflate(dim=self.dim, method='schur', is_data=True)
 
         # Check if data is provided
-        A = data.clone()
+        if data is not None:
+            A = data.clone()
         if data is None and K is not None:
             A = self.get_pseudodata()  # where t(A)*A = K
 
@@ -328,11 +330,12 @@ class SPCASingleUnitl0(PCAobj):
             # postprocessing for sparse loading
             z[P_inv] = 0
             z_norm = torch.norm(z)
-            y = x * z_norm
+            # y = x * z_norm
             z /= z_norm
 
-            # matrix deflation
-            A -= torch.outer(y, z)
+            # deflation
+            # A -= torch.outer(y, z)
+            A = deflator.fit(None, z, A)
             Z[:, comp] = z
 
         return Z

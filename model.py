@@ -1,5 +1,6 @@
 import torch
 import numpy
+import warnings
 
 from torch import linalg
 
@@ -96,7 +97,26 @@ class SparseDeflate:
             return K
 
         elif self.method == 'projection':
-            K = self._projection(K, x)
+            if self.is_data:
+                data = self._projection_data(data, x)
+                return data
+            else:
+                if self.is_ortho:
+                    K, self.Q, self.count = self._ortho_projection(K, x, self.count, self.Q)
+                else:
+                    K = self._projection(K, x)
+                return K
+
+        elif self.method == 'schur':
+            if self.is_data:
+                data = self._schur_data(data, x)
+                return data
+            else:
+                K = self._schur(K, x)
+                return K
+
+        # Raise warning
+        raise warnings.warn('Invalid parameters, no deflation is made.')
 
     # Hotelling's deflation
     @staticmethod

@@ -1,7 +1,7 @@
 import torch
 import math
 
-from model import PCAobj
+from model import PCAobj, SparseDeflate
 from torch import linalg
 from torch.nn import functional as F
 from sklearn.linear_model import ElasticNet
@@ -367,7 +367,8 @@ class SPCATPower(PCAobj):
         # Initialize parameters
         Z = self.V_topk
         A = K.clone()
-        card_grid = [1/(m+1) for m in range(self.max_n_reduce)]
+        card_grid = [1 - m/self.max_n_reduce for m in range(self.max_n_reduce)]
+        deflator = SparseDeflate(dim=self.dim, method='schur')
 
         # extract component unit by unit
         for comp in range(self.k):
@@ -376,7 +377,7 @@ class SPCATPower(PCAobj):
             i = 0
 
             if self.trace:
-                print(f'PC: {comp}:')
+                print(f'PC: {comp+1}:')
 
             while is_reduce:
                 # set cardinality
@@ -385,7 +386,6 @@ class SPCATPower(PCAobj):
                     card = self.card[comp]
                     is_reduce = False
 
-                diff = 0.0
                 iter = 0
                 is_converge = False
                 while not is_converge:
@@ -403,18 +403,25 @@ class SPCATPower(PCAobj):
                         diff = torch.norm(z - z_init)
                         is_converge = True
                         if self.trace:
-                            print(f'Convergence achieved at {iter}')
+                            print(f'Convergence achieved at {iter} \t'
+                                  f'Relative cost difference: {torch.round(diff, decimals=6)}.')
 
                     # max iteration
                     if iter >= self.max_iter:
+                        diff = torch.norm(z - z_init)
                         is_converge = True
                         # report iterations
                         if self.trace:
-                            print(f'Maximum iteration exceeds: {self.max_iter}.'
+                            print(f'Maximum iteration exceeds: {self.max_iter}. \t'
                                   f'Relative cost difference: {torch.round(diff, decimals=6)}.')
 
                     iter += 1
+
                 i += 1
+
+            # deflation
+            A = deflator.fit(A, Z[:, comp])
+
         return Z
 
     def _truncate(self, z:torch.Tensor, ind_topk:torch.Tensor):

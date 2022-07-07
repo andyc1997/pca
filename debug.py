@@ -37,8 +37,8 @@ X_tr = torch.Tensor(X_tr.to_numpy()).to(torch.float64)
 
 
 # region debug
-model = SPCATPower(500, k=5, card=[0.5, 0.5, 0.5, 0.5, 0.5])
+model = SPCATPower(500, k=5, card=[0.5, 0.5, 0.5, 0.5, 0.5], max_iter=2000)
 Z = model.fit(None, data=X_tr)
-print(f'Sparse loading Z: \n{torch.round(Z[:20, :], decimals=4)}\n')
+print(f'Sparse loading Z: \n{torch.round(Z[:22, :], decimals=4)}\n')
 # endregion
 

@@ -38,6 +38,8 @@ class PCAobj:
         X = torch.mm(self.V, torch.diag(torch.sqrt(self.s)))
         X = torch.t(X)
         return X
+
+
 # endregion
 
 
@@ -56,29 +58,45 @@ class VarExplain:
             _, R = linalg.qr(data_proj)
             self.cvar[i] = torch.sum(torch.square(torch.diag(R)))
             if i > 0:
-                self.adj_var[i] = self.cvar[i] - self.cvar[i-1]
+                self.adj_var[i] = self.cvar[i] - self.cvar[i - 1]
 
         # compute cumulative percentage of explained variance (CPEV)
         self.adj_var[0] = self.cvar[0]
         _, R = linalg.qr(data)
-        self.cpev = self.cvar[self.k-1] / torch.sum(torch.square(torch.diag(R)))
+        self.cpev = self.cvar[self.k - 1] / torch.sum(torch.square(torch.diag(R)))
+
 
 # endregion
 
 
 # region
 class SparseDeflate:
-    def __init__(self, method: str = 'hotelling'):
+    def __init__(self, dim: int, method: str = 'hotelling', is_data: bool = False,
+                 is_ortho: bool = False):
+        # method specification
         self.method = method
+        self.is_data = is_data
+        self.is_ortho = is_ortho
+
+        # initialize orthogonal basis and counter
+        self.count = None
+        self.Q = None
+        if self.is_ortho:
+            self.count = 0
+            self.Q = torch.zeros(self.dim, self.dim)
 
     def fit(self, K: torch.Tensor, x: torch.Tensor, data: torch.Tensor = None):
         # SPCA deflation
         if self.method == 'hotelling':
-            K = self._hotelling(K, x)
+            assert self.is_data is False, f'Hotelling method does not support data matrix.'
+            if self.is_ortho:
+                K, self.Q, self.count = self._ortho_hotelling(K, x, self.count, self.Q)
+            else:
+                K = self._hotelling(K, x)
+            return K
+
         elif self.method == 'projection':
             K = self._projection(K, x)
-
-        return K
 
     # Hotelling's deflation
     @staticmethod
@@ -86,6 +104,24 @@ class SparseDeflate:
         xKx = torch.inner(x, torch.matmul(K, x))
         K -= torch.outer(x, x) * xKx
         return K
+
+    # Orthogonalized Hotelling's deflation
+    @staticmethod
+    def _ortho_hotelling(K: torch.Tensor, x: torch.Tensor, count: int,
+                         Q: torch.Tensor):
+        assert count >= 0, f'Count should be nonnegative, but got {count}'
+        # standard Hotelling's deflation for the first round
+        if count == 0:
+            Q[:, count] = x
+            return SparseDeflate()._hotelling(K, x)
+        # OHD for the subsequent round
+        else:
+            # Gram-Schmidt process
+            Q[:, count] = x - torch.matmul(
+                torch.mm(Q[:, 0:count], torch.t(Q[:, 0:count])),
+                x)
+            Q[:, count] /= torch.norm(Q[:, count])
+            return SparseDeflate()._hotelling(K, Q[:, count]), Q, count+1
 
     # Projection deflation
     @staticmethod
@@ -98,7 +134,7 @@ class SparseDeflate:
         K += torch.outer(x, x) * xKx
         return K
 
-    @staticmethod # when data matrix is given instead of covariance matrix
+    @staticmethod  # when data matrix is given instead of covariance matrix
     def _projection_data(data: torch.Tensor, x: torch.Tensor):
         data -= torch.mm(data, torch.outer(x, x))
         return data
@@ -107,13 +143,13 @@ class SparseDeflate:
     @staticmethod
     def _schur(K: torch.Tensor, x: torch.Tensor):
         Kx = torch.matmul(K, x)
-        K -= torch.outer(Kx, Kx)/torch.inner(x, Kx)
+        K -= torch.outer(Kx, Kx) / torch.inner(x, Kx)
         return K
 
-    @staticmethod # when data matrix is given instead of covariance matrix
+    @staticmethod  # when data matrix is given instead of covariance matrix
     def _schur_data(data: torch.Tensor, x: torch.Tensor):
         Xz = torch.matmul(data, x)
-        data -= torch.mm(torch.outer(Xz, Xz)/torch.inner(Xz, Xz), data)
+        data -= torch.mm(torch.outer(Xz, Xz) / torch.inner(Xz, Xz), data)
         return data
-    
+
 # endregion

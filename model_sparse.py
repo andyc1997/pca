@@ -248,14 +248,14 @@ class SPCABlockl0(PCAobj):
 class SPCASingleUnitl0(PCAobj):
     # sPCA stands for sparse PCA
     # SingleUnitl0 stands for L0 penalty and components are extracted unit by unit
-    def __init__(self, dim: int, gamma: float = None, k: int = None,
+    def __init__(self, dim: int, gammas: list = None, k: int = None,
                  max_iter: int = 1000, tol: float = 1e-4, trace: bool = True):
         super(SPCASingleUnitl0, self).__init__(dim, k)
 
-        assert gamma is not None, f'hyperparameters should be provided\n'
-        assert 0 < gamma <= 1, f'invalid range for gamma, got: {gamma}\n'
+        assert gammas is not None, f'hyperparameters should be provided\n'
+        assert [0 < gamma <= 1 for gamma in gammas], f'invalid range for gamma, got: {gammas}\n'
 
-        self.gamma = gamma
+        self.gammas = gammas
         self.max_iter = max_iter
         self.tol = tol
         self.trace = trace
@@ -270,7 +270,7 @@ class SPCASingleUnitl0(PCAobj):
         # Check if data is provided
         if data is not None:
             A = data.clone()
-        if data is None and K is not None:
+        else:
             A = self.get_pseudodata()  # where t(A)*A = K
 
         # loop each component
@@ -279,7 +279,7 @@ class SPCASingleUnitl0(PCAobj):
             idx_max = torch.argmax(torch.norm(A, dim=0))
             a_norm_max = torch.norm(A[:, idx_max])  # should be 1 if K is provided
             x = A[:, idx_max] / a_norm_max
-            gamma = self.gamma * torch.square(a_norm_max)
+            gamma = self.gammas[comp] * torch.square(a_norm_max)
 
             # cost
             cost, cost_prev = 0.0, None

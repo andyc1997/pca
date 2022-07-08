@@ -384,10 +384,14 @@ class SPCATPower(PCAobj):
 
             while is_reduce:
                 # set cardinality
-                card = card_grid[i]
-                if self.card[comp] >= card_grid[i]:
+                if i >= len(card_grid):
                     card = self.card[comp]
                     is_reduce = False
+                else:
+                    card = card_grid[i]
+                    if self.card[comp] >= card_grid[i]:
+                        card = self.card[comp]
+                        is_reduce = False
 
                 iter = 0
                 is_converge = False

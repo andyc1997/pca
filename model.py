@@ -52,20 +52,31 @@ class VarExplain:
         self.cvar = torch.zeros(k)
         self.cpev = None
 
-    def fit(self, data: torch.Tensor, Z: torch.Tensor):
+    def fit(self, data: torch.Tensor, Z: torch.Tensor, K: torch.Tensor = None):
+        # compute adjusted variance
         for i in range(self.k):
-            # compute adjusted variance
-            data_proj = torch.mm(data, torch.mm(Z, torch.pinverse(Z)))
-            _, R = linalg.qr(data_proj)
-            self.cvar[i] = torch.sum(torch.square(torch.diag(R)))
+            data_proj = torch.mm(data, VarExplain()._proj_matrix(Z[:, 0:i + 1]))
+            self.cvar[i] = VarExplain()._adj_var(data_proj)
             if i > 0:
                 self.adj_var[i] = self.cvar[i] - self.cvar[i - 1]
 
         # compute cumulative percentage of explained variance (CPEV)
         self.adj_var[0] = self.cvar[0]
-        _, R = linalg.qr(data)
-        self.cpev = self.cvar[self.k - 1] / torch.sum(torch.square(torch.diag(R)))
+        if K is None:
+            _, R = linalg.qr(data)
+            self.cpev = self.cvar[self.k - 1] / VarExplain()._adj_var(data)
+        else:
+            self.cpev = self.cvar[self.k - 1] / torch.trace(K)
 
+    @staticmethod
+    def _adj_var(X: torch.Tensor):
+        # compute adjusted variance given projected data
+        return torch.trace(torch.mm(torch.t(X), X))
+
+    @staticmethod
+    def _proj_matrix(Z: torch.Tensor):
+        # compute projection matrix given eigenbasis
+        return torch.mm(Z, torch.pinverse(Z))
 
 # endregion
 
@@ -141,7 +152,7 @@ class SparseDeflate:
                 torch.mm(Q[:, 0:count], torch.t(Q[:, 0:count])),
                 x)
             Q[:, count] /= torch.norm(Q[:, count])
-            return SparseDeflate()._hotelling(K, Q[:, count]), Q, count+1
+            return SparseDeflate()._hotelling(K, Q[:, count]), Q, count + 1
 
     # Projection deflation
     @staticmethod
@@ -162,7 +173,7 @@ class SparseDeflate:
     # Orthogonalized projection deflation
     @staticmethod
     def _ortho_projection(K: torch.Tensor, x: torch.Tensor, count: int,
-                         Q: torch.Tensor):
+                          Q: torch.Tensor):
         # standard Hotelling's deflation for the first round
         if count == 0:
             Q[:, count] = x
@@ -175,7 +186,7 @@ class SparseDeflate:
                 torch.mm(Q[:, 0:count], torch.t(Q[:, 0:count])),
                 x)
             Q[:, count] /= torch.norm(Q[:, count])
-            return SparseDeflate()._projection(K, Q[:, count]), Q, count+1
+            return SparseDeflate()._projection(K, Q[:, count]), Q, count + 1
 
     # Schur complement deflation, equivalent to orthogonalized Schur complement deflation
     @staticmethod
